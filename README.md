@@ -218,13 +218,12 @@ DATN/
 
 ## 🤖 Mô Hình ML
 
-Hệ thống sử dụng 4 mô hình để dự đoán `Water_Need` (0/1) và ước tính lượng nước `Water_Flow`:
+Hệ thống sử dụng **3 thuật toán**, mỗi thuật toán có 2 biến thể (Regression + Classification):
 
-| Mô hình | Loại |
-|---|---|
-| Logistic Regression | Classification |
-| Random Forest Classifier | Classification |
-| XGBoost Classifier | Classification |
-| Linear / XGBoost Regressor | Regression (flow rate) |
+| Thuật toán | Regression (dự đoán `Water_Flow`) | Classification (dự đoán `Water_Need`) |
+|---|---|---|
+| Linear / Logistic | `linear_model.pkl` | `logistic_model.pkl` |
+| Random Forest | `random_forest_model.pkl` | `random_forest_clf_model.pkl` |
+| XGBoost | `xgboost_model.pkl` | `xgboost_clf_model.pkl` |
 
 Huấn luyện lại từ dashboard tại trang **Training** hoặc qua `POST /api/models/retrain`.
