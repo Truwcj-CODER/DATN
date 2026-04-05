@@ -1,0 +1,28 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "dht22.cpp"
+        "ds18b20_drv.cpp"
+        "ds3231.cpp"
+        "soil_adc.cpp"
+        "wifi_manager.cpp"
+        "http_poster.cpp"
+        "sdcard_logger.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        freertos
+        esp_wifi
+        esp_http_client
+        esp_adc
+        fatfs
+        sdmmc
+        nvs_flash
+        esp_event
+        esp_netif
+        esp_log
+        lwip
+        onewire_bus
+        ds18b20
+)

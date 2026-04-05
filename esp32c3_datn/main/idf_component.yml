@@ -1,0 +1,13 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## ESP-IDF version requirement
+  idf:
+    version: ">=5.1.0"
+
+  ## OneWire bus driver (RMT-based) – required by ds18b20
+  espressif/onewire_bus:
+    version: "*"
+
+  ## DS18B20 temperature sensor driver
+  espressif/ds18b20:
+    version: "*"

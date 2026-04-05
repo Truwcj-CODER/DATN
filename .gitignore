@@ -1,0 +1,13 @@
+﻿__pycache__/
+*.pyc
+.venv/
+esp32c3_datn/build/
+esp32c3_datn/managed_components/
+esp32c3_datn/dependencies.lock
+sdkconfig
+frontend/node_modules/
+frontend/.next/
+*.db
+trained_models/*.pkl
+trained_models/*.joblib
+
