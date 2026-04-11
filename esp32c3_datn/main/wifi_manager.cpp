@@ -81,7 +81,7 @@ static void event_handler(void *arg, esp_event_base_t base,
         if (!s_sntp_started) {
             esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
             esp_sntp_setservername(0, NTP_SERVER);
-            esp_sntp_set_sync_notify_cb(sntp_sync_cb);
+            esp_sntp_set_time_sync_notification_cb(sntp_sync_cb);
             esp_sntp_init();
             s_sntp_started = true;
             ESP_LOGI(TAG, "SNTP started → %s", NTP_SERVER);
@@ -129,7 +129,10 @@ esp_err_t wifi_manager_init(void)
             sizeof(wifi_cfg.sta.ssid) - 1);
     strncpy((char *)wifi_cfg.sta.password, WIFI_PASS,
             sizeof(wifi_cfg.sta.password) - 1);
-    wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    /* Mạng open (không mật khẩu): dùng WIFI_AUTH_OPEN
+     * Mạng có mật khẩu:           dùng WIFI_AUTH_WPA2_PSK                */
+    wifi_cfg.sta.threshold.authmode =
+        (sizeof(WIFI_PASS) <= 1) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));

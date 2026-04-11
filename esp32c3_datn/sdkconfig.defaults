@@ -22,9 +22,17 @@ CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
 
+# ── Partition Table ───────────────────────────────────────────────────────────
+# Binary > 1 MB → use single-app-large partition (1.5 MB factory slot)
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
 # ── Watchdog ──────────────────────────────────────────────────────────────────
 # DS18B20 conversion takes 750 ms + HTTP timeout 5 s → give plenty of margin
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
 
 # ── SNTP ──────────────────────────────────────────────────────────────────────
 CONFIG_LWIP_DHCP_GET_NTP_SRV=y
+
+# ── LibC – GCC 15.1.0 toolchain ships picolibc instead of newlib ─────────────
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_LIBC_PICOLIBC=y

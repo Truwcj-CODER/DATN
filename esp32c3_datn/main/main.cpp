@@ -3,11 +3,14 @@
  *
  * Hardware: ESP32-C3 Mini (custom PCB)
  * Sensors:
- *   • DHT22           – nhiệt độ & độ ẩm không khí   (GPIO4)
- *   • DS18B20         – nhiệt độ đất, OneWire/RMT      (GPIO3)
- *   • Capacitive v2.1D – độ ẩm đất, ADC1_CH2           (GPIO2)
+ *   • DHT22           – nhiệt độ & độ ẩm không khí   (GPIO2)
+ *   • DS18B20         – nhiệt độ đất, OneWire/RMT      (GPIO7)
+ *   • Capacitive v2.1D – độ ẩm đất, ADC1_CH1           (GPIO1)
  *   • DS3231          – RTC real-time clock, I2C        (SDA=8, SCL=9)
- *   • SD card         – offline logging, SPI2           (MISO=5,MOSI=6,CLK=7,CS=10)
+ *   • SD card         – offline logging, SPI2           (MISO=5,MOSI=10,CLK=4,CS=3)
+ * LEDs:
+ *   • LED_SEND        – nháy khi đọc/gửi dữ liệu      (GPIO20)
+ *   • LED_WIFI        – sáng khi WiFi kết nối          (GPIO21)
  *
  * Luồng chính (sensor_task, 30 s/chu kỳ):
  *   đọc sensors → lấy timestamp DS3231
@@ -19,6 +22,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "driver/gpio.h"
 
 #include "config.h"
 #include "sensor_types.h"
@@ -30,9 +34,27 @@
 #include "http_poster.h"
 #include "sdcard_logger.h"
 
+#include "esp_sntp.h"
 #include <time.h>
 
 static const char *TAG = "MAIN";
+
+/* ------------------------------------------------------------------ */
+/*  LED helpers                                                         */
+/* ------------------------------------------------------------------ */
+
+static void led_init(void)
+{
+    gpio_config_t cfg = {};
+    cfg.pin_bit_mask = (1ULL << LED_SEND_PIN) | (1ULL << LED_WIFI_PIN);
+    cfg.mode         = GPIO_MODE_OUTPUT;
+    cfg.pull_up_en   = GPIO_PULLUP_DISABLE;
+    cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    cfg.intr_type    = GPIO_INTR_DISABLE;
+    gpio_config(&cfg);
+    gpio_set_level(LED_SEND_PIN, 0);
+    gpio_set_level(LED_WIFI_PIN, 0);
+}
 
 /* ------------------------------------------------------------------ */
 /*  Sensor task                                                         */
@@ -45,6 +67,8 @@ static void sensor_task(void *pv)
     TickType_t last_wake = xTaskGetTickCount();
 
     while (true) {
+        gpio_set_level(LED_SEND_PIN, 1);   /* bật LED khi bắt đầu chu kỳ đọc */
+
         sensor_data_t data = {};
         data.water_flow = 0.0f;    /* không có flow sensor trên PCB */
         data.valid      = false;
@@ -116,6 +140,8 @@ static void sensor_task(void *pv)
                  (double)data.soil_moisture);
 
         /* ── 5. Gửi hoặc lưu offline ─────────────────────────────── */
+        gpio_set_level(LED_WIFI_PIN, wifi_manager_is_connected() ? 1 : 0);
+
         if (wifi_manager_is_connected()) {
             /* Gửi offline records còn tồn đọng trước */
             if (sdcard_logger_has_pending()) {
@@ -133,6 +159,8 @@ static void sensor_task(void *pv)
             wifi_manager_reconnect();   /* thử kết nối lại (non-blocking) */
         }
 
+        gpio_set_level(LED_SEND_PIN, 0);   /* tắt LED khi xong chu kỳ */
+
         /* ── Chờ đến chu kỳ tiếp theo (bù trừ thời gian xử lý) ── */
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(SENSOR_INTERVAL_MS));
     }
@@ -147,6 +175,9 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, " DATN Greenhouse Sensor Node (ESP32-C3)");
     ESP_LOGI(TAG, "========================================");
+
+    /* ── LED trạng thái ── */
+    led_init();
 
     /* ── Khởi tạo DS3231 (cần sớm để có timestamp cho log offline) ── */
     if (ds3231_init() != ESP_OK) {

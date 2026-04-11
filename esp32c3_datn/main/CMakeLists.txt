@@ -21,7 +21,7 @@ idf_component_register(
         nvs_flash
         esp_event
         esp_netif
-        esp_log
+        log
         lwip
         onewire_bus
         ds18b20

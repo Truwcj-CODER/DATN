@@ -53,7 +53,7 @@ esp_err_t ds18b20_drv_init(void)
         search_ret = onewire_device_iter_get_next(iter, &found);
         if (search_ret == ESP_OK) {
             ds18b20_config_t ds_cfg = {};
-            if (ds18b20_new_device(&found, &ds_cfg, &s_dev) == ESP_OK) {
+            if (ds18b20_new_device_from_enumeration(&found, &ds_cfg, &s_dev) == ESP_OK) {
                 ESP_LOGI(TAG, "DS18B20 found – ROM: %016llX",
                          (unsigned long long)found.address);
                 break;

@@ -6,8 +6,8 @@
 // ============================================================
 //  WiFi – chỉnh thông tin mạng của bạn
 // ============================================================
-#define WIFI_SSID        "TEN_WIFI_CUA_BAN"
-#define WIFI_PASS        "MAT_KHAU_WIFI"
+#define WIFI_SSID        "NLU-SV"
+#define WIFI_PASS        ""
 #define WIFI_MAX_RETRY   10              // số lần thử kết nối lại
 
 // ============================================================
@@ -30,13 +30,13 @@
 // ============================================================
 
 // DHT22 (nhiệt độ & độ ẩm không khí) – single-wire bit-bang
-#define DHT22_PIN            GPIO_NUM_4
+#define DHT22_PIN            GPIO_NUM_2
 
 // DS18B20 (nhiệt độ đất) – OneWire via RMT
-#define DS18B20_PIN          GPIO_NUM_3
+#define DS18B20_PIN          GPIO_NUM_7
 
-// Cảm biến ẩm đất điện dung v2.1D – analog  →  ADC1_CH2
-#define SOIL_ADC_CHANNEL     ADC_CHANNEL_2   // GPIO2
+// Cảm biến ẩm đất điện dung v2.1D – analog  →  ADC1_CH1
+#define SOIL_ADC_CHANNEL     ADC_CHANNEL_1   // GPIO1
 
 // DS3231 RTC – I2C
 #define I2C_PORT_NUM         I2C_NUM_0
@@ -47,11 +47,15 @@
 // SD Card – SPI2 (FSPI)
 #define SD_SPI_HOST          SPI2_HOST
 #define SD_PIN_MISO          GPIO_NUM_5
-#define SD_PIN_MOSI          GPIO_NUM_6
-#define SD_PIN_CLK           GPIO_NUM_7
-#define SD_PIN_CS            GPIO_NUM_10
+#define SD_PIN_MOSI          GPIO_NUM_10
+#define SD_PIN_CLK           GPIO_NUM_4
+#define SD_PIN_CS            GPIO_NUM_3
 #define SD_MOUNT_POINT       "/sdcard"
 #define SD_OFFLINE_FILE      "/sdcard/offline.csv"
+
+// LED trạng thái
+#define LED_SEND_PIN         GPIO_NUM_20   // nháy khi gửi dữ liệu
+#define LED_WIFI_PIN         GPIO_NUM_21   // nháy khi WiFi kết nối
 
 // ============================================================
 //  Calibration – Cảm biến ẩm đất điện dung v2.1D

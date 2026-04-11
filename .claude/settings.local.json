@@ -1,7 +1,30 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Read(//home/truwjc/Documents/VScode/esp-idf/**)",
+      "Bash(git -C /home/truwjc/Documents/VScode/esp-idf describe --tags echo \"---\" find /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/ -name \"libc.a\")",
+      "Bash(grep -E \"log|esp_log\" echo \"---\" ls /home/truwjc/Documents/VScode/esp-idf/components/)",
+      "Bash(grep -E \"^esp_event$|^esp_netif$|^driver$|^esp_sntp$|^sntp$|^log$|^esp_log$\" echo \"---\" ls /home/truwjc/Documents/VScode/esp-idf/components/)",
+      "Bash(ln -sf /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/picolibc/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libc.a /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libc.a)",
+      "Bash(ln -sf /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/picolibc/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libnosys.a /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libnosys.a)",
+      "Bash(ln -sf __TRACKED_VAR__/libc.a __TRACKED_VAR__/libc.a)",
+      "Bash(ln -sf __TRACKED_VAR__/libnosys.a __TRACKED_VAR__/libnosys.a)",
+      "Bash(ls /home/truwjc/Documents/DATN/esp32c3_datn/managed_components/espressif__onewire_bus/include/ echo \"---\" grep -n \"onewire_new\\\\|onewire_del\\\\|iter\\\\|rmt\" /home/truwjc/Documents/DATN/esp32c3_datn/managed_components/espressif__onewire_bus/include/*.h)",
+      "Bash(ls -la /home/truwjc/Documents/DATN/esp32c3_datn/build/*.bin)",
+      "Bash(ls /home/truwjc/Documents/DATN/esp32c3_datn/sdkconfig*)",
+      "Bash(ln -s /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/picolibc.specs /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/picolibcpp.specs)",
+      "Bash(grep -E \"\\\\.a$|\\\\.specs$\")",
+      "Bash(python3 -c \"import json,sys; t=[x for x in json.load\\(sys.stdin\\)['tools'] if 'riscv32-esp-elf' in x['name']]; print\\(json.dumps\\(t[0]['versions'][0], indent=2\\)\\)\")",
+      "Bash(python3 -c \" import json,sys data = json.load\\(sys.stdin\\) for t in data['tools']: if 'riscv32-esp-elf' in t['name'] and 'gdb' not in t['name']: for v in t['versions'][:1]: url = v.get\\('linux-amd64', {}\\).get\\('url', ''\\) print\\(t['name'], url\\) \")",
+      "Bash(ln -sf /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/libstdc++.a /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libstdc++.a)",
+      "Bash(ln -sf /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/libstdc++.a /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/picolibc/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libstdc++.a)",
+      "Bash(ln -sf /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/no-rtti/libstdc++.a /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/picolibc/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/no-rtti/libstdc++.a)",
+      "Bash(riscv32-esp-elf-readelf -h /home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/riscv32-esp-elf/lib/rv32imc_zicsr_zifencei/ilp32/libstdc++exp.a)",
+      "Bash(riscv32-esp-elf-ar t:*)",
+      "Bash(/home/truwjc/.espressif/tools/riscv32-esp-elf/esp-15.1.0_20250607/riscv32-esp-elf/bin/riscv32-esp-elf-ar t:*)",
+      "Bash(git -C /home/truwjc/esp/esp-idf log --oneline -5)",
+      "Bash(xargs -I{} sh -c 'file \"{}\" 2>/dev/null | grep -l RISC')"
     ]
   }
 }

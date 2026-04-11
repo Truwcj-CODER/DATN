@@ -65,6 +65,8 @@ esp_err_t dht22_init(void)
 esp_err_t dht22_read(float *temperature, float *humidity)
 {
     uint8_t data[5] = {0, 0, 0, 0, 0};
+    uint8_t expected = 0;
+    int16_t raw = 0;
 
     /* ── Gửi tín hiệu start (ngoài critical section) ─────────────── */
     gpio_set_direction(DHT22_PIN, GPIO_MODE_OUTPUT_OD);
@@ -95,7 +97,7 @@ esp_err_t dht22_read(float *temperature, float *humidity)
     taskEXIT_CRITICAL(&s_mux);
 
     /* ── Kiểm tra checksum ───────────────────────────────────────── */
-    uint8_t expected = (uint8_t)((data[0] + data[1] + data[2] + data[3]) & 0xFF);
+    expected = (uint8_t)((data[0] + data[1] + data[2] + data[3]) & 0xFF);
     if (data[4] != expected) {
         ESP_LOGW(TAG, "Checksum fail: got 0x%02X expected 0x%02X", data[4], expected);
         return ESP_ERR_INVALID_CRC;
@@ -103,7 +105,7 @@ esp_err_t dht22_read(float *temperature, float *humidity)
 
     /* ── Giải mã ─────────────────────────────────────────────────── */
     *humidity    = (float)((uint16_t)(data[0] << 8) | data[1]) * 0.1f;
-    int16_t raw  = (int16_t)(((uint16_t)(data[2] & 0x7F) << 8) | data[3]);
+    raw          = (int16_t)(((uint16_t)(data[2] & 0x7F) << 8) | data[3]);
     *temperature = raw * 0.1f;
     if (data[2] & 0x80) *temperature = -(*temperature); /* bit âm */
 
