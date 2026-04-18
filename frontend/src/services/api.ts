@@ -12,8 +12,8 @@ export const setLogging = (enabled: boolean) =>
 export const getDevices = () =>
   api.get<Device[]>("/sensor/devices");
 
-export const predictManual = (data: ManualPredictInput) =>
-  api.post<SensorPredictions>("/sensor/predict", data);
+export const predictManual = (data: ManualPredictInput & { crop_type?: string }) =>
+  api.post<SensorPredictions & { crop_advisory?: unknown }>("/sensor/predict", data);
 
 export const getModelMetrics = () =>
   api.get<MetricsResult>("/models/metrics");
@@ -26,3 +26,13 @@ export const aiAnalyze = (data: unknown) =>
 
 export const getClassificationMetrics = () =>
   api.get("/models/classification-metrics");
+
+export const getCrops = () =>
+  api.get<any[]>("/crops");
+
+export const updateCrop = (id: string, data: any) =>
+  api.put(`/crops/${id}`, data);
+
+export const getCropAdvisory = (
+  data: ManualPredictInput & { crop_type: string }
+) => api.post<any>("/crops/advisory", data);

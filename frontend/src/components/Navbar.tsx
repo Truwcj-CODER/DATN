@@ -11,6 +11,7 @@ const TABS = [
   { href: "/dashboard", label: "Biểu đồ" },
   { href: "/history",   label: "Dữ liệu" },
   { href: "/training",  label: "Huấn luyện" },
+  { href: "/crops",     label: "Cây trồng" },
   { href: "/settings",  label: "Thiết bị" },
 ];
 

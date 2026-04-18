@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { predictManual } from "@/services/api";
+import { predictManual, getCropAdvisory, getCrops } from "@/services/api";
 import { useSensorContext } from "@/context/SensorContext";
 import type { SensorRecord, SensorPredictions, ManualPredictInput } from "@/types/sensor";
+import CropStatusPanel, { CropSelector, type CropAdvisory } from "@/components/CropStatusPanel";
+
 
 const GRADIENTS = [
   { id: "colorTemp",  color: "#f97316" },
@@ -95,9 +97,10 @@ const FIELDS: { key: keyof ManualPredictInput; label: string; placeholder: strin
   { key: "Soil_Moisture",    label: "Độ ẩm đất (%)",     placeholder: "40" },
 ];
 
-function ManualMode() {
+function ManualMode({ cropType }: { cropType: string }) {
   const [form, setForm] = useState({ Humidity: "", Atmospheric_Temp: "", Soil_Temp: "", Soil_Moisture: "" });
   const [result, setResult] = useState<SensorPredictions | null>(null);
+  const [advisory, setAdvisory] = useState<CropAdvisory | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handlePredict = async () => {
@@ -106,18 +109,33 @@ function ManualMode() {
       const payload = Object.fromEntries(
         Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0])
       ) as unknown as ManualPredictInput;
-      const res = await predictManual(payload);
+      const res = await predictManual({ ...payload, crop_type: cropType });
       setResult(res.data);
+      if (res.data.crop_advisory) {
+        setAdvisory(res.data.crop_advisory as CropAdvisory);
+      }
     } catch {
       setResult(null);
+      setAdvisory(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const cropCfg = {
+    emoji: "🌱",
+    name: "Cây trồng",
+    gradient: "linear-gradient(135deg, #3b82f6, #2563eb)"
+  };
+
   return (
     <div className="data-card" style={{ marginTop: "1rem" }}>
-      <div className="metric-title" style={{ marginBottom: "0.75rem" }}>Nhập giá trị cảm biến để AI dự đoán</div>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <span style={{ fontSize: "1.25rem" }}>{cropCfg.emoji}</span>
+        <div className="metric-title" style={{ marginBottom: 0 }}>
+          Dự đoán tưới nước
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "0.75rem", marginBottom: "0.75rem" }}>
         {FIELDS.map((f) => (
           <div key={f.key}>
@@ -149,6 +167,11 @@ function ManualMode() {
                 </div>
               </div>
             ))}
+        </div>
+      )}
+      {advisory && (
+        <div style={{ marginTop: "1.25rem" }}>
+          <CropStatusPanel advisory={advisory} cropType={cropType} />
         </div>
       )}
     </div>
@@ -329,42 +352,92 @@ function DashboardBot({ current }: { current: SensorRecord | null }) {
 export default function Dashboard() {
   const { chartData, current } = useSensorContext();
   const [liveMode, setLiveMode] = useState(true);
+  const [crops, setCrops] = useState<any[]>([]);
+  const [cropType, setCropType] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("cropType") || "tomato";
+    }
+    return "tomato";
+  });
+  const [liveAdvisory, setLiveAdvisory] = useState<CropAdvisory | null>(null);
+
+  // Fetch crops on mount
+  useEffect(() => {
+    getCrops().then((res) => setCrops(res.data)).catch(console.error);
+  }, []);
+
+  // Compute live advisory whenever current sensor changes or crop changes
+  useEffect(() => {
+    if (!current || !current.humidity) { setLiveAdvisory(null); return; }
+    getCropAdvisory({
+      Humidity: current.humidity,
+      Atmospheric_Temp: current.atmospheric_Temp,
+      Soil_Temp: current.soil_Temp,
+      Soil_Moisture: current.soil_Moisture,
+      crop_type: cropType,
+    }).then((res) => setLiveAdvisory(res.data as CropAdvisory)).catch(() => setLiveAdvisory(null));
+  }, [current, cropType]);
+
+  const handleCropChange = (c: string) => {
+    setCropType(c);
+    if (typeof window !== "undefined") localStorage.setItem("cropType", c);
+  };
+
+  const selectedCrop = crops.find(c => c.id === cropType);
 
   return (
     <div>
-      <div style={{ display:"flex",justifyContent:"flex-end",marginBottom:"0.75rem",gap:"0.5rem" }}>
-        <button onClick={() => setLiveMode(true)} style={{ padding:"0.35rem 1rem",borderRadius:6,fontWeight:600,fontSize:"0.82rem",cursor:"pointer",border:liveMode?"1.5px solid #0ea5e9":"1px solid var(--border-color)",background:liveMode?"#0ea5e9":"var(--card-bg)",color:liveMode?"white":"var(--text-dark)" }}>
-          🟢 Live
-        </button>
-        <button onClick={() => setLiveMode(false)} style={{ padding:"0.35rem 1rem",borderRadius:6,fontWeight:600,fontSize:"0.82rem",cursor:"pointer",border:!liveMode?"1.5px solid #8b5cf6":"1px solid var(--border-color)",background:!liveMode?"#8b5cf6":"var(--card-bg)",color:!liveMode?"white":"var(--text-dark)" }}>
-          Dự đoán
-        </button>
+      {/* Top bar: crop selector + mode toggle */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", gap: "0.75rem", flexWrap: "wrap" }}>
+        {/* Crop selector */}
+        <CropSelector selected={cropType} onChange={handleCropChange} crops={crops} />
+
+        {/* Mode toggle */}
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button onClick={() => setLiveMode(true)} style={{ padding: "0.35rem 1rem", borderRadius: 6, fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", border: liveMode ? "1.5px solid #0ea5e9" : "1px solid var(--border-color)", background: liveMode ? "#0ea5e9" : "var(--card-bg)", color: liveMode ? "white" : "var(--text-dark)" }}>
+            🟢 Live
+          </button>
+          <button onClick={() => setLiveMode(false)} style={{ padding: "0.35rem 1rem", borderRadius: 6, fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", border: !liveMode ? "1.5px solid #8b5cf6" : "1px solid var(--border-color)", background: !liveMode ? "#8b5cf6" : "var(--card-bg)", color: !liveMode ? "white" : "var(--text-dark)" }}>
+            Dự đoán
+          </button>
+        </div>
       </div>
 
       {liveMode ? (
-        <div className="dashboard-grid">
-          <MetricCard className="half"  title="NHIỆT ĐỘ KHÔNG KHÍ" value={current.atmospheric_Temp?.toFixed(1)} unit="°C">
-            <Chart data={chartData} dataKey="atmospheric_Temp" color="#f97316" gradientId="colorTemp" />
-          </MetricCard>
-          <MetricCard className="half"  title="ĐỘ ẨM KHÔNG KHÍ"   value={current.humidity?.toFixed(0)}        unit="%">
-            <Chart data={chartData} dataKey="humidity" color="#0ea5e9" gradientId="colorHum" />
-          </MetricCard>
-          <MetricCard className="third" title="ĐỘ ẨM ĐẤT"          value={current.soil_Moisture?.toFixed(0)}  unit="%">
-            <Chart data={chartData} dataKey="soil_Moisture" color="#22c55e" gradientId="colorSoilM" />
-          </MetricCard>
-          <MetricCard className="third" title="NHIỆT ĐỘ ĐẤT"       value={current.soil_Temp?.toFixed(1)}      unit="°C">
-            <Chart data={chartData} dataKey="soil_Temp" color="#f97316" gradientId="colorTemp" />
-          </MetricCard>
-          <MetricCard className="third" title="ĐIỂM SƯƠNG"          value={current.dew_Point?.toFixed(1)}     unit="°C">
-            <Chart data={chartData} dataKey="dew_Point" color="#8b5cf6" gradientId="colorDew" />
-          </MetricCard>
-          <MetricCard className="full"  title="LƯU LƯỢNG NƯỚC"      value={current.water_Flow?.toFixed(2)}     unit="m³/h">
-            <Chart data={chartData} dataKey="water_Flow" color="#0ea5e9" gradientId="colorHum" height="90px" />
-          </MetricCard>
-          <PredictionStrip predictions={current.predictions} />
-        </div>
+        <>
+          <div className="dashboard-grid">
+            <MetricCard className="half"  title="NHIỆT ĐỘ KHÔNG KHÍ" value={current.atmospheric_Temp?.toFixed(1)} unit="°C">
+              <Chart data={chartData} dataKey="atmospheric_Temp" color="#f97316" gradientId="colorTemp" />
+            </MetricCard>
+            <MetricCard className="half"  title="ĐỘ ẨM KHÔNG KHÍ"   value={current.humidity?.toFixed(0)}        unit="%">
+              <Chart data={chartData} dataKey="humidity" color="#0ea5e9" gradientId="colorHum" />
+            </MetricCard>
+            <MetricCard className="third" title="ĐỘ ẨM ĐẤT"          value={current.soil_Moisture?.toFixed(0)}  unit="%">
+              <Chart data={chartData} dataKey="soil_Moisture" color="#22c55e" gradientId="colorSoilM" />
+            </MetricCard>
+            <MetricCard className="third" title="NHIỆT ĐỘ ĐẤT"       value={current.soil_Temp?.toFixed(1)}      unit="°C">
+              <Chart data={chartData} dataKey="soil_Temp" color="#f97316" gradientId="colorTemp" />
+            </MetricCard>
+            <MetricCard className="third" title="ĐIỂM SƯƠNG"          value={current.dew_Point?.toFixed(1)}     unit="°C">
+              <Chart data={chartData} dataKey="dew_Point" color="#8b5cf6" gradientId="colorDew" />
+            </MetricCard>
+            <MetricCard className="full"  title="LƯU LƯỢNG NƯỚC"      value={current.water_Flow?.toFixed(2)}     unit="m³/h">
+              <Chart data={chartData} dataKey="water_Flow" color="#0ea5e9" gradientId="colorHum" height="90px" />
+            </MetricCard>
+            <PredictionStrip predictions={current.predictions} />
+          </div>
+          {/* Crop status panel below sensor grid */}
+          <div style={{ marginTop: "1rem" }}>
+            <CropStatusPanel
+              advisory={liveAdvisory}
+              cropType={cropType}
+              cropName={selectedCrop?.name}
+              cropEmoji={selectedCrop?.emoji}
+            />
+          </div>
+        </>
       ) : (
-        <ManualMode />
+        <ManualMode cropType={cropType} />
       )}
       <DashboardBot current={liveMode ? current : null} />
     </div>

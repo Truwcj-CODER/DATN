@@ -27,7 +27,9 @@ class GreenhouseService:
         device_id = payload.get('device_id', 'unknown')
         self.device_registry[device_id] = datetime.utcnow()
 
-        record = self._build_record(device_id, payload)
+        # crop_type can be sent by ESP32 or set per-device in settings (falls back to 'tomato')
+        crop_type = payload.get('crop_type', 'tomato')
+        record = self._build_record(device_id, payload, crop_type)
         await self.sio.emit('receive_sensor_data', record)
         await self._save_to_db(record)
 
@@ -101,7 +103,7 @@ class GreenhouseService:
     #  Internals                                                           #
     # ------------------------------------------------------------------ #
 
-    def _build_record(self, device_id: str, payload: dict) -> dict:
+    def _build_record(self, device_id: str, payload: dict, crop_type: str = 'tomato') -> dict:
         h          = float(payload.get('Humidity', 0.0) or 0.0)
         t          = float(payload.get('Atmospheric_Temp', 0.0) or 0.0)
         soil_temp  = float(payload.get('Soil_Temp', 0.0) or 0.0)
@@ -134,6 +136,7 @@ class GreenhouseService:
             'water_Flow':      water_flow,
             'water_Need':      water_need,
             'predictions':     predictions,
+            'crop_type':       crop_type,
         }
 
     async def _save_to_db(self, record: dict):
@@ -151,6 +154,7 @@ class GreenhouseService:
                 water_need=record['water_Need'],
                 prediction=None,
                 confidence=0.0,
+                crop_type=record.get('crop_type', 'tomato'),
             ))
             db.commit()
             db.close()

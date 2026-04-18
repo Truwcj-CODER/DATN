@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from core import config, dependencies
-from db.models import SensorRecord, ModelMetrics, ClassificationMetrics
+from core.crop_profiles import get_crop_advisory
+from db.models import SensorRecord, ModelMetrics, ClassificationMetrics, CropProfile
 
 router = APIRouter(prefix="/api")
 
@@ -63,13 +64,108 @@ class PredictRequest(BaseModel):
     Atmospheric_Temp: float
     Soil_Temp: float
     Soil_Moisture: float
+    crop_type: str = "tomato"
 
 @router.post("/sensor/predict")
-async def predict_manual(req: PredictRequest):
+async def predict_manual(req: PredictRequest, db: Session = Depends(dependencies.get_db)):
     result = dependencies.greenhouse_service.predict_manual(
         req.Humidity, req.Atmospheric_Temp, req.Soil_Temp, req.Soil_Moisture
     )
+    # Fetch crop profile from DB
+    profile_db = db.query(CropProfile).filter(CropProfile.id == req.crop_type).first()
+    profile = profile_db.to_dict() if profile_db else None
+
+    # Attach crop advisory
+    dew_point = result.get("dew_point", req.Atmospheric_Temp - (100 - req.Humidity) / 5.0)
+    advisory = get_crop_advisory(
+        profile=profile,
+        humidity=req.Humidity,
+        atmospheric_temp=req.Atmospheric_Temp,
+        soil_temp=req.Soil_Temp,
+        soil_moisture=req.Soil_Moisture,
+        dew_point=dew_point,
+    )
+    result["crop_advisory"] = advisory
     return result
+
+
+# ------------------------------------------------------------------ #
+#  Crop Profiles                                                       #
+# ------------------------------------------------------------------ #
+
+@router.get("/crops")
+async def get_crops(db: Session = Depends(dependencies.get_db)):
+    """Return available crop profiles from database."""
+    crops = db.query(CropProfile).all()
+    return [c.to_dict() for c in crops]
+
+
+class CropProfileUpdate(BaseModel):
+    name: str | None = None
+    emoji: str | None = None
+    description: str | None = None
+    optimal: dict | None = None  # JSON structure matching to_dict
+    warning: dict | None = None
+
+@router.put("/crops/{crop_id}")
+async def update_crop(crop_id: str, req: CropProfileUpdate, db: Session = Depends(dependencies.get_db)):
+    crop = db.query(CropProfile).filter(CropProfile.id == crop_id).first()
+    if not crop:
+        return {"error": "Crop not found"}, 404
+
+    if req.name: crop.name = req.name
+    if req.emoji: crop.emoji = req.emoji
+    if req.description: crop.description = req.description
+
+    # Map nested dicts back to columns
+    if req.optimal:
+        opt = req.optimal
+        if 'humidity' in opt:
+            crop.opt_hum_min, crop.opt_hum_max = opt['humidity']
+        if 'atmospheric_temp' in opt:
+            crop.opt_temp_min, crop.opt_temp_max = opt['atmospheric_temp']
+        if 'soil_temp' in opt:
+            crop.opt_soil_temp_min, crop.opt_soil_temp_max = opt['soil_temp']
+        if 'soil_moisture' in opt:
+            crop.opt_soil_moisture_min, crop.opt_soil_moisture_max = opt['soil_moisture']
+        if 'dew_point' in opt:
+            crop.opt_dew_point_min, crop.opt_dew_point_max = opt['dew_point']
+
+    if req.warning:
+        warn = req.warning
+        if 'humidity' in warn:
+            crop.warn_hum_min, crop.warn_hum_max = warn['humidity']
+        if 'atmospheric_temp' in warn:
+            crop.warn_temp_min, crop.warn_temp_max = warn['atmospheric_temp']
+        if 'soil_temp' in warn:
+            crop.warn_soil_temp_min, crop.warn_soil_temp_max = warn['soil_temp']
+        if 'soil_moisture' in warn:
+            crop.warn_soil_moisture_min, crop.warn_soil_moisture_max = warn['soil_moisture']
+        if 'dew_point' in warn:
+            crop.warn_dew_point_min, crop.warn_dew_point_max = warn['dew_point']
+
+    db.commit()
+    return crop.to_dict()
+
+
+@router.post("/crops/advisory")
+async def get_crop_advisory_endpoint(
+    payload: PredictRequest,
+    db: Session = Depends(dependencies.get_db)
+):
+    """Return per-metric crop advisory without running ML prediction."""
+    profile_db = db.query(CropProfile).filter(CropProfile.id == payload.crop_type).first()
+    profile = profile_db.to_dict() if profile_db else None
+
+    dew_point = payload.Atmospheric_Temp - (100 - payload.Humidity) / 5.0
+    return get_crop_advisory(
+        profile=profile,
+        humidity=payload.Humidity,
+        atmospheric_temp=payload.Atmospheric_Temp,
+        soil_temp=payload.Soil_Temp,
+        soil_moisture=payload.Soil_Moisture,
+        dew_point=dew_point,
+    )
 
 
 # ------------------------------------------------------------------ #

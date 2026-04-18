@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { getDevices } from "@/services/api";
 import type { Device } from "@/types/sensor";
 
+
 const REFRESH_INTERVAL = 10_000;
 
 function BotSVG({ size = 28, dark = false }: { size?: number; dark?: boolean }) {
@@ -296,7 +297,9 @@ export default function Settings() {
   }, [refresh]);
 
   return (
-    <div className="view-container" style={{ padding: "1.5rem" }}>
+    <div className="view-container" style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+
+      {/* ─── Device Card ─── */}
       <div className="data-card">
         <div className="data-header">
           <h2>Thiết bị ESP32</h2>
