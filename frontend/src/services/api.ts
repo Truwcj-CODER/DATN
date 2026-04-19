@@ -36,3 +36,11 @@ export const updateCrop = (id: string, data: any) =>
 export const getCropAdvisory = (
   data: ManualPredictInput & { crop_type: string }
 ) => api.post<any>("/crops/advisory", data);
+
+export const importCsv = (file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.post<{ status: string; inserted: number; total_records: number }>("/sensor/import", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+};

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useSensorContext } from "@/context/SensorContext";
 import type { SensorRecord } from "@/types/sensor";
+import { importCsv } from "@/services/api";
 
 const todayYMD = () => new Date().toISOString().slice(0, 10);
 
@@ -184,12 +185,34 @@ const arrowBtn: React.CSSProperties = {
 };
 
 export default function HistoryTable() {
-  const { history } = useSensorContext();
+  const { history, reloadHistory } = useSensorContext();
   const [dateFrom, setDateFrom] = useState(todayYMD());
   const [dateTo,   setDateTo]   = useState(todayYMD());
   const [active,   setActive]   = useState("today");
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo,   setRangeTo]   = useState("");
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [toast, setToast] = useState<{show: boolean, count: number, total: number, err?: string}>({ show: false, count: 0, total: 0 });
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const res = await importCsv(file);
+      await reloadHistory();
+      setToast({ show: true, count: res.data.inserted, total: res.data.total_records });
+      setTimeout(() => setToast(t => ({...t, show: false})), 6000);
+    } catch (err: any) {
+      setToast({ show: true, count: 0, total: 0, err: err.response?.data?.error || err.message });
+      setTimeout(() => setToast(t => ({...t, show: false})), 6000);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const setPreset = (key: string) => {
     setActive(key);
@@ -273,10 +296,18 @@ export default function HistoryTable() {
             <DateBtn value={rangeTo}   onChange={(d) => { setRangeTo(d);   setActive(""); }} />
           </div>
 
-          <button className="btn-export" onClick={exportCsv}
-            style={{ marginLeft: "auto", padding: "0.3rem 0.9rem", borderRadius: 7, whiteSpace: "nowrap" }}>
-            📥 Xuất Excel
-          </button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
+            <input type="file" accept=".csv" ref={fileInputRef} style={{ display: "none" }} onChange={handleImport} />
+            <button className="btn-export" onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              style={{ padding: "0.3rem 0.9rem", borderRadius: 7, whiteSpace: "nowrap", background: "#f59e0b", borderColor: "#f59e0b", color: "white" }}>
+              {importing ? "Đang nhập..." : "📤 Nhập CSV"}
+            </button>
+            <button className="btn-export" onClick={exportCsv}
+              style={{ padding: "0.3rem 0.9rem", borderRadius: 7, whiteSpace: "nowrap" }}>
+              📥 Xuất Excel
+            </button>
+          </div>
         </div>
 
         <div className="table-wrapper">
@@ -312,6 +343,36 @@ export default function HistoryTable() {
           {filtered.length} bản ghi
         </p>
       </div>
+      
+      {toast.show && (
+        <div style={{
+          position: "fixed", bottom: 28, right: 28, zIndex: 9999,
+          background: "white", padding: "16px 20px", borderRadius: 12,
+          boxShadow: "0 10px 40px rgba(0,0,0,0.15)", borderLeft: `5px solid ${toast.err ? '#ef4444' : '#22c55e'}`,
+          animation: "slideUpFade 0.3s ease", display: "flex", flexDirection: "column", gap: 6, minWidth: 280
+        }}>
+          <style>{`
+            @keyframes slideUpFade {
+              from { opacity: 0; transform: translateY(20px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+          <div style={{ fontWeight: 700, color: toast.err ? "#b91c1c" : "#166534", fontSize: "0.95rem", paddingRight: 16 }}>
+            {toast.err ? "Lỗi nhập dữ liệu!" : "✅ Nhập dữ liệu thành công!"}
+          </div>
+          {toast.err ? (
+            <div style={{ fontSize: "0.85rem", color: "var(--text-dark)", lineHeight: 1.5 }}>
+              {toast.err}
+            </div>
+          ) : (
+            <div style={{ fontSize: "0.85rem", color: "var(--text-dark)", lineHeight: 1.5 }}>
+              • Đã thêm: <strong>{toast.count}</strong> bản ghi<br/>
+              • Tổng nhật ký: <strong>{toast.total}</strong> bản ghi
+            </div>
+          )}
+          <button onClick={() => setToast({show: false, count: 0, total: 0})} style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "#9ca3af", lineHeight: 1, padding: 4 }}>&times;</button>
+        </div>
+      )}
     </div>
   );
 }

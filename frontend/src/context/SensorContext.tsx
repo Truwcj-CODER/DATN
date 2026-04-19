@@ -15,6 +15,7 @@ interface SensorContextValue {
   current: SensorRecord;
   chartData: SensorRecord[];
   isWatering: boolean;
+  reloadHistory: () => Promise<void>;
 }
 
 const SensorContext = createContext<SensorContextValue | null>(null);
@@ -25,16 +26,17 @@ export function SensorProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(socket.connected);
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
 
-  useEffect(() => {
-    const loadHistory = () => {
-      fetchHistory()
-        .then((r) => setHistory(r.data))
-        .catch(() => {});
-    };
+  const reloadHistory = async () => {
+    try {
+      const r = await fetchHistory();
+      setHistory(r.data);
+    } catch {}
+  };
 
+  useEffect(() => {
     const onConnect = () => {
       setConnected(true);
-      loadHistory();
+      reloadHistory();
     };
     const onDisconnect = () => setConnected(false);
     const onSensorData = (data: SensorRecord) =>
@@ -52,7 +54,7 @@ export function SensorProvider({ children }: { children: ReactNode }) {
     socket.on("training_status", onTrainingStatus);
     socket.on("models_updated", onModelsUpdated);
 
-    if (socket.connected) loadHistory();
+    if (socket.connected) reloadHistory();
 
     return () => {
       socket.off("connect", onConnect);
@@ -69,7 +71,7 @@ export function SensorProvider({ children }: { children: ReactNode }) {
 
   return (
     <SensorContext.Provider
-      value={{ history, isTraining, connected, trainResult, setTrainResult, current, chartData, isWatering }}
+      value={{ history, isTraining, connected, trainResult, setTrainResult, current, chartData, isWatering, reloadHistory }}
     >
       {children}
     </SensorContext.Provider>

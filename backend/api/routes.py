@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from core import config, dependencies
 from core.crop_profiles import get_crop_advisory
 from db.models import SensorRecord, ModelMetrics, ClassificationMetrics, CropProfile
+import csv
+import io
 
 router = APIRouter(prefix="/api")
 
@@ -43,6 +45,53 @@ async def get_devices():
 async def get_history(limit: int = config.HISTORY_LIMIT, db: Session = Depends(dependencies.get_db)):
     records = db.query(SensorRecord).order_by(SensorRecord.id.desc()).limit(limit).all()
     return [r.to_dict() for r in records]
+
+@router.post("/sensor/import")
+async def import_csv(file: UploadFile = File(...), db: Session = Depends(dependencies.get_db)):
+    if not file.filename.endswith(".csv"):
+        return {"error": "Only CSV files are allowed"}, 400
+    
+    try:
+        contents = await file.read()
+        decoded = contents.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(decoded))
+        
+        batch = []
+        inserted = 0
+        from datetime import datetime
+        for row in reader:
+            try:
+                record = SensorRecord(
+                    device_id        = 'CSV_IMPORT',
+                    time             = row.get('Time', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    humidity         = float(row.get('Humidity', 0)),
+                    atmospheric_temp = float(row.get('Atmospheric_Temp', 0)),
+                    soil_temp        = float(row.get('Soil_Temp', 0)),
+                    soil_moisture    = float(row.get('Soil_Moisture', 0)),
+                    dew_point        = float(row.get('Dew_Point', 0)),
+                    water_need       = float(row.get('Water_Need', 0)),
+                    water_flow       = float(row.get('Water_Flow', 0)),
+                    prediction       = 'Cần tưới' if float(row.get('Water_Need', 0)) > 0.5 else 'Không cần tưới',
+                    confidence       = 0.0,
+                )
+                batch.append(record)
+                if len(batch) >= 500:
+                    db.bulk_save_objects(batch)
+                    db.commit()
+                    inserted += len(batch)
+                    batch = []
+            except Exception:
+                continue
+        
+        if batch:
+            db.bulk_save_objects(batch)
+            db.commit()
+            inserted += len(batch)
+            
+        total = db.query(SensorRecord).count()
+        return {"status": "ok", "inserted": inserted, "total_records": total}
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 
 # ------------------------------------------------------------------ #
