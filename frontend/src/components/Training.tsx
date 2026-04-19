@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import { retrain, aiAnalyze } from "@/services/api";
 import { useSensorContext } from "@/context/SensorContext";
-import type { MetricsResult, ClfMetrics, TrainResult } from "@/types/sensor";
+import type { MetricsResult, TrainResult } from "@/types/sensor";
 
 const MODEL_COLORS: Record<string, string> = {
   linear:        "#3b82f6",
@@ -17,17 +17,6 @@ const MODEL_COLORS: Record<string, string> = {
 };
 
 const METRIC_LABELS: Record<string, string> = { rmse: "RMSE", mae: "MAE", r2: "R²" };
-
-const CLF_MODEL_COLORS: Record<string, string> = {
-  logistic:          "#8b5cf6",
-  random_forest_clf: "#06b6d4",
-  xgboost_clf:       "#f59e0b",
-};
-const CLF_MODEL_NAMES: Record<string, string> = {
-  logistic:          "Logistic Regression",
-  random_forest_clf: "Random Forest Classifier",
-  xgboost_clf:       "XGBoost Classifier",
-};
 
 function MetricBarChart({ results }: { results: MetricsResult }) {
   const entries = Object.entries(results);
@@ -230,155 +219,6 @@ function MetricsComparisonTable({ results, best_model }: { results: MetricsResul
   );
 }
 
-function ClassificationMetricBarChart({ clf_results }: { clf_results: Record<string, ClfMetrics> }) {
-  const entries = Object.entries(clf_results);
-  const CLF_METRICS = ["accuracy", "precision", "recall", "f1", "auc"] as const;
-  const CLF_METRIC_LABELS: Record<string, string> = { accuracy: "Accuracy", precision: "Precision", recall: "Recall", f1: "F1-Score", auc: "AUC-ROC" };
-
-  const radarData = CLF_METRICS.map((m) => ({
-    metric: CLF_METRIC_LABELS[m],
-    ...Object.fromEntries(entries.map(([k, v]) => [k, v[m] != null ? parseFloat((v[m] as number).toFixed(4)) : 0])),
-  }));
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginTop: "1rem", alignItems: "start" }}>
-      <div className="metric-card">
-        <div className="metric-title" style={{ marginBottom: 4 }}>Radar so sánh tổng thể</div>
-        <div style={{ fontSize: "0.7rem", color: "var(--text-gray)", marginBottom: 8 }}>Tất cả chỉ số 0–1, cao hơn = tốt hơn</div>
-        <ResponsiveContainer width="100%" height={280}>
-          <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-            <PolarGrid stroke="var(--border-color)" />
-            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fontWeight: 700, fill: "var(--text-dark)" }} />
-            <PolarRadiusAxis angle={90} domain={[0, 1]} tickCount={4} tick={{ fontSize: 9, fill: "var(--text-gray)" }} />
-            {entries.map(([key]) => (
-              <Radar key={key} name={CLF_MODEL_NAMES[key]} dataKey={key} stroke={CLF_MODEL_COLORS[key]} fill={CLF_MODEL_COLORS[key]} fillOpacity={0.15} strokeWidth={2} />
-            ))}
-            <Legend wrapperStyle={{ fontSize: "0.78rem", paddingTop: 8 }} />
-            <Tooltip formatter={(v, name) => [(v as number) != null ? (v as number).toFixed(4) : "N/A", CLF_MODEL_NAMES[name as string] || (name as string)]} />
-          </RadarChart>
-        </ResponsiveContainer>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {(["accuracy", "precision", "recall", "f1"] as const).map((m) => {
-          const data = entries.map(([key, v]) => ({ name: CLF_MODEL_NAMES[key], value: v[m] ?? 0, fill: CLF_MODEL_COLORS[key] }));
-          return (
-            <div key={m} className="metric-card" style={{ padding: "0.65rem 0.75rem" }}>
-              <div className="metric-title" style={{ fontSize: "0.78rem", marginBottom: 2 }}>{CLF_METRIC_LABELS[m]}</div>
-              <ResponsiveContainer width="100%" height={80}>
-                <BarChart data={data} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 8 }} />
-                  <YAxis tick={{ fontSize: 9 }} domain={[0, 1]} />
-                  <Tooltip formatter={(v) => (v as number).toFixed(4)} />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {data.map((entry, i) => <rect key={i} fill={entry.fill} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ConfusionMatrixHeatmap({ confusionData, modelKey, modelName }: { confusionData?: number[][]; modelKey: string; modelName?: string }) {
-  if (!confusionData || confusionData.length < 2) return null;
-  const [[TN, FP], [FN, TP]] = confusionData;
-  const total = TN + FP + FN + TP || 1;
-  const color = CLF_MODEL_COLORS[modelKey] || "#64748b";
-  const cells = [
-    { label: "TN", value: TN, bg: "#dcfce7", textColor: "#166534", title: "True Negative" },
-    { label: "FP", value: FP, bg: "#fee2e2", textColor: "#dc2626", title: "False Positive" },
-    { label: "FN", value: FN, bg: "#fee2e2", textColor: "#dc2626", title: "False Negative" },
-    { label: "TP", value: TP, bg: "#dcfce7", textColor: "#166534", title: "True Positive" },
-  ];
-  return (
-    <div style={{ border: `2px solid ${color}33`, borderRadius: 10, padding: "0.85rem", background: "var(--card-bg)" }}>
-      <div style={{ fontWeight: 700, fontSize: "0.82rem", color, marginBottom: 8 }}>{modelName}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", gap: 4, marginBottom: 4 }}>
-        <div /><div style={{ textAlign: "center", fontSize: "0.68rem", fontWeight: 700, color: "var(--text-gray)" }}>Dự đoán 0</div>
-        <div style={{ textAlign: "center", fontSize: "0.68rem", fontWeight: 700, color: "var(--text-gray)" }}>Dự đoán 1</div>
-      </div>
-      {[[0,1],[2,3]].map((row, ri) => (
-        <div key={ri} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", gap: 4, marginBottom: ri === 0 ? 4 : 0 }}>
-          <div style={{ display: "flex", alignItems: "center", fontSize: "0.68rem", fontWeight: 700, color: "var(--text-gray)" }}>Thực tế {ri}</div>
-          {row.map((ci) => (
-            <div key={ci} title={cells[ci].title} style={{ background: cells[ci].bg, borderRadius: 6, padding: "0.6rem 0.4rem", textAlign: "center" }}>
-              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: cells[ci].textColor }}>{cells[ci].value}</div>
-              <div style={{ fontSize: "0.6rem", color: cells[ci].textColor, opacity: 0.75 }}>{cells[ci].label} ({((cells[ci].value / total) * 100).toFixed(1)}%)</div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ClassificationBestModelBadge({ bestClfModel, clf_results }: { bestClfModel: string; clf_results: Record<string, ClfMetrics> }) {
-  const m = clf_results[bestClfModel];
-  if (!m) return null;
-  const analysis = (m.f1 ?? 0) >= 0.9 ? "Xuất sắc — phân loại chính xác rất cao."
-    : (m.f1 ?? 0) >= 0.7 ? "Tốt — mô hình đáng tin cậy cho bài toán tưới tiêu."
-    : (m.f1 ?? 0) >= 0.5 ? "Trung bình — cần thêm dữ liệu để cải thiện."
-    : "Cần cải thiện — dữ liệu có thể mất cân bằng hoặc chưa đủ.";
-  const color = CLF_MODEL_COLORS[bestClfModel] || "#64748b";
-  return (
-    <div style={{ marginTop: "1.5rem", padding: "1.25rem 1.5rem", background: "linear-gradient(135deg,#1e293b,#334155)", borderRadius: 8, color: "white" }}>
-      <div style={{ fontSize: "0.72rem", fontWeight: 700, opacity: 0.8, textTransform: "uppercase", letterSpacing: 1 }}>🏆 Mô hình phân loại tốt nhất</div>
-      <div style={{ fontSize: "1.3rem", fontWeight: 800, margin: "0.35rem 0", color }}>{m.name}</div>
-      <div style={{ fontSize: "0.82rem", opacity: 0.9, marginBottom: "0.5rem" }}>Accuracy {m.accuracy} · F1 {m.f1} · AUC {m.auc ?? "N/A"}</div>
-      <div style={{ fontSize: "0.82rem", opacity: 0.85 }}>{analysis}</div>
-    </div>
-  );
-}
-
-function StatisticalTestsSection({ stat_results }: { stat_results?: TrainResult["stat_results"] }) {
-  if (!stat_results) return null;
-  const regStat = stat_results.regression  || {};
-  const clfStat = stat_results.classification || {};
-
-  const SigBadge = ({ pValue }: { pValue?: number }) => {
-    if (pValue == null) return <span style={{ fontSize: "0.72rem", color: "var(--text-gray)" }}>N/A</span>;
-    const sig = pValue < 0.05;
-    return (
-      <span style={{ fontSize: "0.72rem", fontWeight: 700, background: sig ? "#fef3c7" : "#f1f5f9", color: sig ? "#b45309" : "#64748b", padding: "2px 8px", borderRadius: 20 }}>
-        {sig ? "Có ý nghĩa ✓" : "Không có ý nghĩa"}
-      </span>
-    );
-  };
-
-  return (
-    <div className="data-card" style={{ marginTop: "1rem" }}>
-      <div className="metric-title" style={{ marginBottom: "0.35rem" }}>Kiểm định thống kê</div>
-      <div style={{ fontSize: "0.72rem", color: "var(--text-gray)", marginBottom: "0.85rem" }}>p &lt; 0.05: sự khác biệt giữa hai mô hình có ý nghĩa thống kê</div>
-      {Object.keys(regStat).length > 0 && (
-        <>
-          <div style={{ fontWeight: 700, fontSize: "0.8rem", marginBottom: "0.5rem", color: "var(--text-dark)" }}>Paired t-test — Hồi quy (RMSE qua các fold CV)</div>
-          <div style={{ overflowX: "auto", marginBottom: "1rem" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
-              <thead><tr style={{ background: "var(--btn-light-bg)" }}>{["So sánh","t-statistic","p-value","Kết luận"].map((h) => <th key={h} style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontWeight: 700, fontSize: "0.76rem", borderBottom: "2px solid var(--border-color)" }}>{h}</th>)}</tr></thead>
-              <tbody>{Object.entries(regStat).map(([pair, v], i) => (<tr key={pair} style={{ background: i % 2 === 0 ? "transparent" : "var(--btn-light-bg)" }}><td style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{pair.replace(/_vs_/g, " vs ")}</td><td style={{ padding: "0.5rem 0.75rem" }}>{v.t_stat?.toFixed(4) ?? "N/A"}</td><td style={{ padding: "0.5rem 0.75rem" }}>{v.p_value?.toFixed(6) ?? "N/A"}</td><td style={{ padding: "0.5rem 0.75rem" }}><SigBadge pValue={v.p_value} /></td></tr>))}</tbody>
-            </table>
-          </div>
-        </>
-      )}
-      {Object.keys(clfStat).length > 0 && (
-        <>
-          <div style={{ fontWeight: 700, fontSize: "0.8rem", marginBottom: "0.5rem", color: "var(--text-dark)" }}>McNemar test — Phân loại (so sánh dự đoán trên test set)</div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
-              <thead><tr style={{ background: "var(--btn-light-bg)" }}>{["So sánh","Statistic","p-value","Kết luận"].map((h) => <th key={h} style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontWeight: 700, fontSize: "0.76rem", borderBottom: "2px solid var(--border-color)" }}>{h}</th>)}</tr></thead>
-              <tbody>{Object.entries(clfStat).map(([pair, v], i) => (<tr key={pair} style={{ background: i % 2 === 0 ? "transparent" : "var(--btn-light-bg)" }}><td style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{pair.replace(/_vs_/g, " vs ")}</td><td style={{ padding: "0.5rem 0.75rem" }}>{v.statistic?.toFixed(4) ?? "N/A"}</td><td style={{ padding: "0.5rem 0.75rem" }}>{v.p_value?.toFixed(6) ?? "N/A"}</td><td style={{ padding: "0.5rem 0.75rem" }}><SigBadge pValue={v.p_value} /></td></tr>))}</tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function BotSVG({ size = 28, dark = false }: { size?: number; dark?: boolean }) {
   const eyeColor  = dark ? "#15803d" : "#166534";
   const leafColor = dark ? "#bbf7d0" : "#86efac";
@@ -415,11 +255,9 @@ function FloatingAiBot({ trainResult }: { trainResult: TrainResult | null }) {
     setAnalyzed(false);
     setLoading(true); setAnalysis(""); setErr("");
     aiAnalyze({
-      results:        trainResult.results,
-      best_model:     trainResult.best_model,
-      sample_count:   trainResult.sample_count,
-      clf_results:    trainResult.clf_results,
-      best_clf_model: trainResult.best_clf_model,
+      results:      trainResult.results,
+      best_model:   trainResult.best_model,
+      sample_count: trainResult.sample_count,
     }).then((res) => {
       const data = res.data as { error?: string; analysis?: string };
       if (data.error) setErr(data.error);
@@ -609,16 +447,15 @@ export default function Training() {
         </div>
 
         {trainResult?.success && (() => {
-          const { results, chart_data, best_model, clf_results, best_clf_model } = trainResult;
+          const { results, chart_data, best_model } = trainResult;
           return (
             <>
-              {/* ── PHẦN 1: HỒI QUY ── */}
               {results && (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "1.25rem 0 0.5rem" }}>
                     <span style={{ width: 4, height: 20, borderRadius: 2, background: "#3b82f6", flexShrink: 0 }} />
-                    <span style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text-dark)" }}>Mô hình Hồi quy</span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--text-gray)", fontStyle: "italic" }}>Dự đoán lượng nước cần (liên tục)</span>
+                    <span style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text-dark)" }}>Kết quả huấn luyện</span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-gray)", fontStyle: "italic" }}>Dự đoán nhu cầu tưới nước</span>
                   </div>
                   {best_model && <BestModelBadge bestModel={best_model} results={results} />}
                   <MetricsComparisonTable results={results} best_model={best_model} />
@@ -663,54 +500,6 @@ export default function Training() {
                   )}
                 </>
               )}
-
-              {/* ── PHẦN 2: PHÂN LOẠI ── */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2rem 0 0.5rem" }}>
-                <span style={{ width: 4, height: 20, borderRadius: 2, background: "#8b5cf6", flexShrink: 0 }} />
-                <span style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text-dark)" }}>Mô hình Phân loại</span>
-                <span style={{ fontSize: "0.72rem", color: "var(--text-gray)", fontStyle: "italic" }}>Quyết định có cần tưới hay không</span>
-              </div>
-              {clf_results ? (
-                <>
-                  {best_clf_model && <ClassificationBestModelBadge bestClfModel={best_clf_model} clf_results={clf_results} />}
-                  <div className="data-card" style={{ marginTop: "1rem" }}>
-                    <div className="metric-title" style={{ marginBottom: "0.5rem" }}>So sánh chỉ số 3 mô hình phân loại</div>
-                    <ClassificationMetricBarChart clf_results={clf_results} />
-                  </div>
-                  <div className="data-card" style={{ marginTop: "1rem" }}>
-                    <div className="metric-title" style={{ marginBottom: "0.75rem" }}>Ma trận nhầm lẫn (Confusion Matrix)</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
-                      {Object.entries(clf_results).map(([key, v]) => (
-                        <ConfusionMatrixHeatmap key={key} confusionData={v.confusion_matrix} modelKey={key} modelName={v.name} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="data-card" style={{ marginTop: "1rem" }}>
-                    <div className="metric-title" style={{ marginBottom: "0.5rem" }}>Bảng so sánh chi tiết</div>
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" }}>
-                        <thead><tr style={{ background: "var(--btn-light-bg)" }}>{["Mô hình","Accuracy","Precision","Recall","F1-Score","AUC-ROC","Time (s)"].map((h) => <th key={h} style={{ padding: "0.6rem 0.8rem", fontWeight: 700, fontSize: "0.76rem", textAlign: "left", borderBottom: "2px solid var(--border-color)", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-                        <tbody>{Object.entries(clf_results).map(([key, v], i) => {
-                          const color = CLF_MODEL_COLORS[key];
-                          const isBest = key === best_clf_model;
-                          return (
-                            <tr key={key} style={{ background: i % 2 === 0 ? "transparent" : "var(--btn-light-bg)" }}>
-                              <td style={{ padding: "0.65rem 0.8rem" }}><div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} /><span style={{ fontWeight: 700, color }}>{v.name}</span>{isBest && <span style={{ fontSize: "0.63rem", fontWeight: 800, background: color, color: "#fff", padding: "1px 6px", borderRadius: 20 }}>TỐT NHẤT</span>}</div></td>
-                              {(["accuracy","precision","recall","f1","auc"] as const).map((m) => <td key={m} style={{ padding: "0.65rem 0.8rem", fontWeight: 600 }}>{v[m] != null ? (v[m] as number).toFixed(4) : "N/A"}</td>)}
-                              <td style={{ padding: "0.65rem 0.8rem" }}>{v.train_time?.toFixed(4) ?? "—"}</td>
-                            </tr>
-                          );
-                        })}</tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="data-card" style={{ marginTop: "0.5rem", color: "#f59e0b", fontWeight: 600 }}>
-                  ⚠ Không đủ dữ liệu phân loại — cần ít nhất 2 lớp trong cột water_flow (ngưỡng hiện tại: water_flow &gt; 0.05).
-                </div>
-              )}
-
               <p style={{ fontSize: "0.78rem", color: "var(--text-gray)", marginTop: "1rem" }}>Đã train với {trainResult.sample_count} bản ghi</p>
             </>
           );

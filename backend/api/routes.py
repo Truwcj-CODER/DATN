@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from core import config, dependencies
 from core.crop_profiles import get_crop_advisory
-from db.models import SensorRecord, ModelMetrics, ClassificationMetrics, CropProfile
+from db.models import SensorRecord, ModelMetrics, CropProfile
 import csv
 import io
 
@@ -227,15 +227,7 @@ async def get_model_metrics(db: Session = Depends(dependencies.get_db)):
     return [m.to_dict() for m in metrics]
 
 
-@router.get("/models/classification-metrics")
-async def get_classification_metrics(db: Session = Depends(dependencies.get_db)):
-    metrics = (
-        db.query(ClassificationMetrics)
-          .order_by(ClassificationMetrics.trained_at.desc())
-          .limit(3)
-          .all()
-    )
-    return [m.to_dict() for m in metrics]
+
 
 
 # ------------------------------------------------------------------ #
@@ -260,8 +252,6 @@ class AnalyzeRequest(BaseModel):
     results: dict
     best_model: str
     sample_count: int
-    clf_results: dict | None = None
-    best_clf_model: str | None = None
 
 @router.post("/ai/analyze")
 async def ai_analyze(req: AnalyzeRequest):
@@ -277,27 +267,13 @@ async def ai_analyze(req: AnalyzeRequest):
         for v in req.results.values()
     )
 
-    clf_section = ""
-    if req.clf_results:
-        clf_lines = "\n".join(
-            f"- {v['name']}: Accuracy={v.get('accuracy')}, F1={v.get('f1')}, AUC={v.get('auc')}"
-            for v in req.clf_results.values()
-        )
-        best_clf = req.clf_results.get(req.best_clf_model or "", {})
-        clf_section = (
-            f"\n\nKet qua phan loai (phan loai can tuoi / khong can tuoi):\n{clf_lines}\n"
-            f"Mo hinh phan loai tot nhat: {best_clf.get('name')} "
-            f"(F1={best_clf.get('f1')}, AUC={best_clf.get('auc')})"
-        )
-
     prompt = (
         "Ban la chuyen gia Machine Learning. Hay phan tich ket qua huan luyen he thong "
         "du doan nhu cau tuoi nuoc cho nha kinh thong minh bang tieng Viet, ngan gon (6-8 cau).\n\n"
         f"Du lieu: {req.sample_count} ban ghi cam bien (nhiet do, do am khong khi, do am dat, diem suong).\n\n"
-        f"Ket qua hoi quy (du doan luong nuoc can - lien tuc):\n{reg_lines}\n"
-        f"Mo hinh hoi quy tot nhat: {best.get('name')} (R\u00b2={best.get('r2')}, RMSE={best.get('rmse')})"
-        f"{clf_section}\n\n"
-        "Hay nhan xet tong the: chat luong ca hai nhom mo hinh, mo hinh nao dang tin cay nhat, "
+        f"Ket qua hoi quy:\n{reg_lines}\n"
+        f"Mo hinh tot nhat: {best.get('name')} (R\u00b2={best.get('r2')}, RMSE={best.get('rmse')})\n\n"
+        "Hay nhan xet tong the: chat luong cac mo hinh, mo hinh nao dang tin cay nhat, "
         "co nen ap dung vao thuc te khong va can luu y dieu gi?"
     )
 

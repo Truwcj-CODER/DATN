@@ -24,8 +24,8 @@ export const retrain = (models: string[]) =>
 export const aiAnalyze = (data: unknown) =>
   api.post<{ analysis: string }>("/ai/analyze", data);
 
-export const getClassificationMetrics = () =>
-  api.get("/models/classification-metrics");
+
+
 
 export const getCrops = () =>
   api.get<any[]>("/crops");

@@ -38,16 +38,7 @@ export interface ModelMetrics {
 
 export type MetricsResult = Record<string, ModelMetrics>;
 
-export interface ClfMetrics {
-  name?: string;
-  accuracy?: number;
-  precision?: number;
-  recall?: number;
-  f1?: number;
-  auc?: number;
-  train_time?: number;
-  confusion_matrix?: number[][];
-}
+
 
 export interface ChartData {
   actual: number[];
@@ -66,12 +57,7 @@ export interface TrainResult {
   results?: MetricsResult;
   chart_data?: Record<string, ChartData>;
   best_model?: string;
-  clf_results?: Record<string, ClfMetrics>;
-  best_clf_model?: string;
-  stat_results?: {
-    regression?: Record<string, StatTest>;
-    classification?: Record<string, StatTest>;
-  };
+  feature_importance?: Record<string, { feature: string; importance: number }[]>;
   sample_count?: number;
 }
 

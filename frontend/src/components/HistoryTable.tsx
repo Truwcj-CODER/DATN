@@ -1,16 +1,19 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useSensorContext } from "@/context/SensorContext";
 import type { SensorRecord } from "@/types/sensor";
 import { importCsv } from "@/services/api";
 
-const todayYMD = () => new Date().toISOString().slice(0, 10);
+const todayYMD = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const fmtYMD = (d: Date | string | null): string => {
   if (!d) return "";
   if (typeof d === "string") return d;
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
 const fmtDisplay = (ymd: string) => {
@@ -195,6 +198,13 @@ export default function HistoryTable() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState<{show: boolean, count: number, total: number, err?: string}>({ show: false, count: 0, total: 0 });
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -204,10 +214,12 @@ export default function HistoryTable() {
       const res = await importCsv(file);
       await reloadHistory();
       setToast({ show: true, count: res.data.inserted, total: res.data.total_records });
-      setTimeout(() => setToast(t => ({...t, show: false})), 6000);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => setToast(t => ({...t, show: false})), 6000);
     } catch (err: any) {
       setToast({ show: true, count: 0, total: 0, err: err.response?.data?.error || err.message });
-      setTimeout(() => setToast(t => ({...t, show: false})), 6000);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => setToast(t => ({...t, show: false})), 6000);
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -241,26 +253,40 @@ export default function HistoryTable() {
     setRangeFrom(""); setRangeTo("");
   };
 
-  const filterFrom = rangeFrom || (!rangeTo ? dateFrom : "");
-  const filterTo   = rangeTo   || (!rangeFrom ? dateTo : "");
+  const filterFrom = useMemo(() => rangeFrom || (!rangeTo ? dateFrom : ""), [rangeFrom, rangeTo, dateFrom]);
+  const filterTo   = useMemo(() => rangeTo   || (!rangeFrom ? dateTo : ""), [rangeTo, rangeFrom, dateTo]);
 
-  const filtered = history.filter((r: SensorRecord) => {
-    const rDate = r.time?.slice(0, 10);
-    if (filterFrom && rDate && rDate < filterFrom) return false;
-    if (filterTo   && rDate && rDate > filterTo)   return false;
-    return true;
-  });
-
-  const exportCsv = () => {
-    let csv = "Time,Humidity,Atmospheric_Temp,Soil_Temp,Soil_Moisture,Dew_Point,Water_Need,Water_Flow\n";
-    filtered.forEach((r) => {
-      csv += `${r.time},${r.humidity},${r.atmospheric_Temp},${r.soil_Temp},${r.soil_Moisture},${r.dew_Point},${r.water_Need > 0.5 ? 1 : 0},${r.water_Flow}\n`;
+  const filtered = useMemo(() => {
+    return history.filter((r: SensorRecord) => {
+      const rDate = r.time?.slice(0, 10);
+      if (filterFrom && rDate && rDate < filterFrom) return false;
+      if (filterTo   && rDate && rDate > filterTo)   return false;
+      return true;
     });
+  }, [history, filterFrom, filterTo]);
+
+  const dtf = useMemo(() => new Intl.DateTimeFormat("vi-VN", { 
+    day: "2-digit", month: "2-digit", year: "numeric", 
+    hour: "2-digit", minute: "2-digit", second: "2-digit", 
+    hour12: false 
+  }), []);
+
+  const exportCsv = useCallback(() => {
+    const lines = ["Time,Humidity,Atmospheric_Temp,Soil_Temp,Soil_Moisture,Dew_Point,Water_Need,Water_Flow"];
+    filtered.forEach((r) => {
+      lines.push(`${r.time},${r.humidity},${r.atmospheric_Temp},${r.soil_Temp},${r.soil_Moisture},${r.dew_Point},${r.water_Need > 0.5 ? 1 : 0},${r.water_Flow}`);
+    });
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    link.download = `DATA_${Date.now()}.csv`;
+    link.href = url;
+    link.setAttribute("download", `DATA_${Date.now()}.csv`);
+    document.body.appendChild(link);
     link.click();
-  };
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [filtered]);
 
   const qBtnStyle = (key: string): React.CSSProperties => ({
     padding: "0.3rem 0.8rem", borderRadius: 7, fontSize: "0.78rem", fontWeight: 600,
@@ -326,8 +352,8 @@ export default function HistoryTable() {
                   Không có dữ liệu trong khoảng thời gian này
                 </td></tr>
               ) : filtered.map((row, i) => (
-                <tr key={i}>
-                  <td>{row.time ? new Date(row.time).toLocaleString("vi-VN", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12: false }) : "—"}</td>
+                <tr key={row.time ?? i}>
+                  <td>{row.time ? dtf.format(new Date(row.time)) : "—"}</td>
                   <td>{row.humidity?.toFixed(1)}</td>
                   <td>{row.atmospheric_Temp?.toFixed(1)}</td>
                   <td>{row.soil_Temp?.toFixed(1)}</td>

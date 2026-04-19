@@ -35,22 +35,4 @@ MODEL_CONFIGS = {
     'xgboost':      {'name': 'XGBoost', 'n_estimators': 100, 'max_depth': 3, 'learning_rate': 0.1, 'random_state': RANDOM_STATE},
 }
 
-# Classification
-CLASSIFICATION_TARGET_COLUMN = 'Irrigate_Decision'
-IRRIGATE_THRESHOLD: float = 0.05  # water_flow > 0.05 → irrigate (matches _build_record logic)
 
-CLF_MODEL_CONFIGS = {
-    'logistic': {
-        'name': 'Logistic Regression',
-        'max_iter': 1000, 'random_state': RANDOM_STATE,
-    },
-    'random_forest_clf': {
-        'name': 'Random Forest Classifier',
-        'n_estimators': 100, 'max_depth': 10, 'random_state': RANDOM_STATE,
-    },
-    'xgboost_clf': {
-        'name': 'XGBoost Classifier',
-        'n_estimators': 100, 'max_depth': 3, 'learning_rate': 0.1,
-        'eval_metric': 'logloss', 'random_state': RANDOM_STATE,
-    },
-}
