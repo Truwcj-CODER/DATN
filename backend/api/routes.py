@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from core import config, dependencies
@@ -6,8 +6,79 @@ from core.crop_profiles import get_crop_advisory
 from db.models import SensorRecord, ModelMetrics, CropProfile
 import csv
 import io
+import httpx
+import re
+import unicodedata
 
 router = APIRouter(prefix="/api")
+
+
+def _strip_accents(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", value)
+    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+
+
+def _normalize_address_query(query: str) -> list[str]:
+    cleaned = " ".join(query.strip().split())
+    expanded = re.sub(r"\bđh\b", "Đại học", cleaned, flags=re.IGNORECASE)
+    expanded = re.sub(r"\btp\.?\s*hcm\b", "Thành phố Hồ Chí Minh", expanded, flags=re.IGNORECASE)
+    expanded = re.sub(r"\bhcm\b", "Hồ Chí Minh", expanded, flags=re.IGNORECASE)
+
+    variants = [cleaned, expanded, f"{expanded}, Việt Nam"]
+    no_accent = _strip_accents(expanded)
+    if no_accent != expanded:
+        variants.extend([no_accent, f"{no_accent}, Vietnam"])
+
+    lowered = _strip_accents(expanded).lower()
+    if "nong lam" in lowered and ("tphcm" in lowered or "ho chi minh" in lowered):
+        variants.insert(0, "Trường Đại học Nông Lâm Thành phố Hồ Chí Minh")
+        variants.insert(1, "Nong Lam University Ho Chi Minh City")
+
+    unique = []
+    seen = set()
+    for item in variants:
+        key = item.lower()
+        if item and key not in seen:
+            unique.append(item)
+            seen.add(key)
+    return unique
+
+
+@router.get("/geocode/search")
+async def geocode_search(q: str = Query(..., min_length=2), limit: int = Query(5, ge=1, le=10)):
+    headers = {
+        "User-Agent": "DATN-Greenhouse-Dashboard/1.0",
+        "Accept-Language": "vi,en",
+    }
+    async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+        for query in _normalize_address_query(q):
+            params = {
+                "q": query,
+                "format": "jsonv2",
+                "limit": limit,
+                "countrycodes": "vn",
+                "addressdetails": 1,
+                "accept-language": "vi",
+            }
+            try:
+                res = await client.get("https://nominatim.openstreetmap.org/search", params=params)
+                res.raise_for_status()
+            except httpx.HTTPError:
+                continue
+
+            results = res.json()
+            if results:
+                return [
+                    {
+                        "display_name": item.get("display_name", ""),
+                        "lat": item.get("lat"),
+                        "lon": item.get("lon"),
+                    }
+                    for item in results
+                    if item.get("lat") and item.get("lon")
+                ]
+
+    return []
 
 
 # ------------------------------------------------------------------ #
@@ -45,6 +116,144 @@ async def get_devices():
 async def get_history(limit: int = config.HISTORY_LIMIT, db: Session = Depends(dependencies.get_db)):
     records = db.query(SensorRecord).order_by(SensorRecord.id.desc()).limit(limit).all()
     return [r.to_dict() for r in records]
+
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _forecast_dew_point(temp: float, humidity: float) -> float:
+    return temp - (100 - humidity) / 5.0
+
+
+def _predict_for_forecast(humidity: float, atmospheric_temp: float, soil_temp: float,
+                          soil_moisture: float, dew_point: float) -> dict:
+    service = dependencies.greenhouse_service
+    if not service or not service.models:
+        return {}
+
+    features = [[humidity, atmospheric_temp, soil_temp, soil_moisture, dew_point]]
+    predictions = {}
+    for key in ("linear", "random_forest", "xgboost"):
+        model = service.models.get(key)
+        if model is None:
+            continue
+        predictions[key] = round(float(model.predict(features)[0]), 4)
+    return predictions
+
+
+async def _fetch_open_meteo_forecast(lat: float, lon: float) -> dict:
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "forecast_days": 7,
+        "timezone": "auto",
+        "daily": ",".join([
+            "temperature_2m_mean",
+            "relative_humidity_2m_mean",
+            "precipitation_sum",
+        ]),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get("https://api.open-meteo.com/v1/forecast", params=params)
+            res.raise_for_status()
+            return res.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Weather forecast unavailable: {exc}") from exc
+
+
+def _daily_recommendation(water_need: bool, soil_moisture: float, rain_mm: float,
+                          crop_profile: dict | None) -> str:
+    if not crop_profile:
+        if water_need:
+            return "Cần tưới"
+        return "Không cần tưới"
+
+    opt_min = crop_profile["optimal"]["soil_moisture"][0]
+    warn_min = crop_profile["warning"]["soil_moisture"][0]
+    if soil_moisture <= warn_min:
+        return "Cần tưới ngay"
+    if water_need and rain_mm >= 5:
+        return "Theo dõi sau mưa"
+    if water_need or soil_moisture < opt_min:
+        return "Cần tưới"
+    return "Không cần tưới"
+
+
+@router.get("/sensor/forecast/7-days")
+async def get_seven_day_forecast(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    crop_type: str = "tomato",
+    db: Session = Depends(dependencies.get_db),
+):
+    latest = db.query(SensorRecord).order_by(SensorRecord.id.desc()).first()
+    if not latest:
+        raise HTTPException(status_code=404, detail="No sensor data available for forecast")
+
+    profile_db = db.query(CropProfile).filter(CropProfile.id == crop_type).first()
+    profile = profile_db.to_dict() if profile_db else None
+
+    weather = await _fetch_open_meteo_forecast(lat, lon)
+    daily = weather.get("daily") or {}
+    dates = daily.get("time") or []
+    temps = daily.get("temperature_2m_mean") or []
+    humidities = daily.get("relative_humidity_2m_mean") or []
+    rains = daily.get("precipitation_sum") or []
+    if not dates or len(dates) < 7:
+        raise HTTPException(status_code=502, detail="Weather forecast response is incomplete")
+
+    soil_moisture = float(latest.soil_moisture)
+    soil_temp_base = float(latest.soil_temp)
+    opt_soil_min = profile["optimal"]["soil_moisture"][0] if profile else 55.0
+    warn_soil_min = profile["warning"]["soil_moisture"][0] if profile else 35.0
+
+    days = []
+    for index, date in enumerate(dates[:7]):
+        temp = float(temps[index] if index < len(temps) and temps[index] is not None else latest.atmospheric_temp)
+        humidity = float(humidities[index] if index < len(humidities) and humidities[index] is not None else latest.humidity)
+        rain_mm = float(rains[index] if index < len(rains) and rains[index] is not None else 0.0)
+
+        evap_loss = 2.0 + max(temp - 24.0, 0.0) * 0.25 + max(60.0 - humidity, 0.0) * 0.08
+        rain_gain = min(rain_mm * 1.8, 18.0)
+        estimated_soil_moisture = _clamp(soil_moisture - evap_loss + rain_gain, 0.0, 100.0)
+        estimated_soil_temp = round(soil_temp_base * 0.65 + temp * 0.35, 2)
+        dew_point = _forecast_dew_point(temp, humidity)
+        predictions = _predict_for_forecast(
+            humidity, temp, estimated_soil_temp, estimated_soil_moisture, dew_point
+        )
+
+        model_values = [float(v) for v in predictions.values()]
+        model_score = sum(model_values) / len(model_values) if model_values else 0.0
+        rule_need = estimated_soil_moisture < opt_soil_min or estimated_soil_moisture <= warn_soil_min
+        water_need = model_score >= 0.5 or rule_need
+        recommendation = _daily_recommendation(water_need, estimated_soil_moisture, rain_mm, profile)
+
+        days.append({
+            "date": date,
+            "temperature": round(temp, 2),
+            "humidity": round(humidity, 2),
+            "precipitation": round(rain_mm, 2),
+            "estimated_soil_temp": estimated_soil_temp,
+            "estimated_soil_moisture": round(estimated_soil_moisture, 2),
+            "dew_point": round(dew_point, 2),
+            "predictions": predictions,
+            "model_score": round(_clamp(model_score, 0.0, 1.0), 4),
+            "water_need": water_need,
+            "recommendation": recommendation,
+        })
+
+        soil_moisture = max(estimated_soil_moisture, opt_soil_min + 5.0) if water_need else estimated_soil_moisture
+
+    return {
+        "source": "Open-Meteo",
+        "latitude": lat,
+        "longitude": lon,
+        "crop_type": crop_type,
+        "baseline": latest.to_dict(),
+        "days": days,
+    }
 
 @router.post("/sensor/import")
 async def import_csv(file: UploadFile = File(...), db: Session = Depends(dependencies.get_db)):

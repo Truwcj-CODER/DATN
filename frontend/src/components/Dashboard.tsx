@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { predictManual, getCropAdvisory, getCrops } from "@/services/api";
+import { predictManual, getCropAdvisory, getCrops, fetchSevenDayForecast, searchAddress as searchAddressApi } from "@/services/api";
 import { useSensorContext } from "@/context/SensorContext";
-import type { SensorRecord, SensorPredictions, ManualPredictInput } from "@/types/sensor";
+import type { SensorRecord, SensorPredictions, ManualPredictInput, ForecastDay, GeocodeResult } from "@/types/sensor";
 import CropStatusPanel, { CropSelector, type CropAdvisory } from "@/components/CropStatusPanel";
 
 
@@ -173,6 +173,276 @@ function ManualMode({ cropType }: { cropType: string }) {
         <div style={{ marginTop: "1.25rem" }}>
           <CropStatusPanel advisory={advisory} cropType={cropType} />
         </div>
+      )}
+    </div>
+  );
+}
+
+function ForecastPanel({ cropType }: { cropType: string }) {
+  const [address, setAddress] = useState("");
+  const [addressResults, setAddressResults] = useState<GeocodeResult[]>([]);
+  const [lat, setLat] = useState("");
+  const [lon, setLon] = useState("");
+  const [days, setDays] = useState<ForecastDay[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedLat = localStorage.getItem("forecastLat") || "";
+    const savedLon = localStorage.getItem("forecastLon") || "";
+    const savedAddress = localStorage.getItem("forecastAddress") || "";
+    setLat(savedLat);
+    setLon(savedLon);
+    setAddress(savedAddress);
+  }, []);
+
+  const setLocation = (nextLat: number, nextLon: number, nextAddress?: string) => {
+    const fixedLat = nextLat.toFixed(6);
+    const fixedLon = nextLon.toFixed(6);
+    setLat(fixedLat);
+    setLon(fixedLon);
+    if (nextAddress) setAddress(nextAddress);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("forecastLat", fixedLat);
+      localStorage.setItem("forecastLon", fixedLon);
+      if (nextAddress) localStorage.setItem("forecastAddress", nextAddress);
+    }
+  };
+
+  const searchAddress = async () => {
+    const query = address.trim();
+    if (!query) {
+      setError("Nhập địa chỉ trước khi tìm vị trí.");
+      setAddressResults([]);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const results = (await searchAddressApi(query)).data;
+      setAddressResults(results);
+      if (!results.length) {
+        setError("Không tìm thấy địa chỉ. Thử nhập thêm phường/quận/thành phố.");
+        return;
+      }
+      const first = results[0];
+      setLocation(Number(first.lat), Number(first.lon), first.display_name);
+    } catch {
+      setError("Không tìm được tọa độ từ địa chỉ. Có thể dịch vụ bản đồ đang bận.");
+      setAddressResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const useCurrentLocation = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setError("Trình duyệt không hỗ trợ lấy vị trí hiện tại.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setError("");
+        setLocation(pos.coords.latitude, pos.coords.longitude);
+      },
+      () => setError("Không lấy được vị trí hiện tại. Kiểm tra quyền location của trình duyệt.")
+    );
+  };
+
+  const loadForecast = async () => {
+    const parsedLat = Number(lat);
+    const parsedLon = Number(lon);
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLon)) {
+      setError("Nhập tọa độ hợp lệ trước khi cập nhật dự báo.");
+      setDays([]);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetchSevenDayForecast({ lat: parsedLat, lon: parsedLon, crop_type: cropType });
+      setDays(res.data.days);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("forecastLat", lat);
+        localStorage.setItem("forecastLon", lon);
+        if (address.trim()) localStorage.setItem("forecastAddress", address.trim());
+      }
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Không lấy được dự báo 7 ngày.");
+      setDays([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (lat && lon && days.length) {
+      loadForecast();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropType]);
+
+  return (
+    <div className="data-card" style={{ marginTop: "1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+        <div>
+          <div className="metric-title" style={{ marginBottom: 2 }}>Dự báo tưới 7 ngày</div>
+          <div style={{ fontSize: "0.8rem", color: "var(--text-gray)" }}>
+            Dùng Open-Meteo, dữ liệu cảm biến mới nhất và ngưỡng cây trồng hiện tại.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "end", flexWrap: "wrap" }}>
+          <label style={{ fontSize: "0.75rem", color: "var(--text-gray)" }}>
+            Latitude
+            <input type="number" value={lat} onChange={(e) => setLat(e.target.value)}
+              placeholder="21.0285" style={{ display: "block", marginTop: 4, width: 120 }} />
+          </label>
+          <label style={{ fontSize: "0.75rem", color: "var(--text-gray)" }}>
+            Longitude
+            <input type="number" value={lon} onChange={(e) => setLon(e.target.value)}
+              placeholder="105.8542" style={{ display: "block", marginTop: 4, width: 120 }} />
+          </label>
+          <button className="btn-export" onClick={loadForecast} disabled={loading} style={{ width: "auto", padding: "0.45rem 1rem" }}>
+            {loading ? "Đang tải..." : "Cập nhật dự báo"}
+          </button>
+          <button className="btn-export" type="button" onClick={useCurrentLocation} style={{ width: "auto", padding: "0.45rem 1rem", background: "#16a34a" }}>
+            Dùng vị trí hiện tại
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1fr) auto", gap: "0.5rem", alignItems: "end", marginBottom: "0.75rem" }}>
+        <label style={{ fontSize: "0.75rem", color: "var(--text-gray)" }}>
+          Địa chỉ nhà kính
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") searchAddress();
+            }}
+            placeholder="Ví dụ: Quận 7, TP.HCM"
+            style={{ display: "block", marginTop: 4, width: "100%" }}
+          />
+        </label>
+        <button className="btn-export" type="button" onClick={searchAddress} disabled={loading} style={{ width: "auto", padding: "0.45rem 1rem" }}>
+          Tìm địa chỉ
+        </button>
+      </div>
+
+      {addressResults.length > 1 && (
+        <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+          {addressResults.map((item) => (
+            <button
+              key={`${item.lat}-${item.lon}`}
+              type="button"
+              onClick={() => setLocation(Number(item.lat), Number(item.lon), item.display_name)}
+              style={{
+                border: "1px solid var(--border-color)",
+                background: "var(--card-bg)",
+                color: "var(--text-dark)",
+                borderRadius: 6,
+                padding: "0.35rem 0.55rem",
+                fontSize: "0.74rem",
+                cursor: "pointer",
+                maxWidth: 280,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={item.display_name}
+            >
+              {item.display_name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {lat && lon && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem", padding: "0.65rem 0.8rem", border: "1px solid var(--border-color)", borderRadius: 8, background: "rgba(34,197,94,0.08)" }}>
+          <div style={{ fontSize: "0.82rem", color: "var(--text-dark)" }}>
+            Vị trí dự báo đang lưu: <strong>{Number(lat).toFixed(5)}, {Number(lon).toFixed(5)}</strong>
+            {address.trim() && (
+              <span style={{ color: "var(--text-gray)" }}> - {address.trim()}</span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: "0.55rem", alignItems: "center" }}>
+            <a
+              href={`https://www.google.com/maps?q=${lat},${lon}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: "0.78rem", fontWeight: 700, color: "#15803d", textDecoration: "none" }}
+            >
+              Xem trên Google Maps
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setAddress("");
+                setAddressResults([]);
+              }}
+              style={{ border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text-dark)", borderRadius: 6, padding: "0.3rem 0.55rem", fontSize: "0.74rem", cursor: "pointer" }}
+            >
+              Đổi vị trí
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ marginBottom: "0.75rem", padding: "0.65rem 0.8rem", border: "1px solid #fca5a5", borderRadius: 6, color: "#991b1b", background: "#fee2e2", fontSize: "0.82rem" }}>
+          {error}
+        </div>
+      )}
+
+      {days.length > 0 && (
+        <>
+          <div className="chart-wrapper" style={{ height: 190, marginBottom: "1rem" }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={days} margin={{ top: 10, right: 12, left: -18, bottom: 0 }}>
+                <GradientDefs />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                <XAxis dataKey="date" stroke="#a0a0a0" fontSize={11} />
+                <YAxis stroke="#a0a0a0" fontSize={11} axisLine={false} tickLine={false} domain={[0, 100]} />
+                <Tooltip contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} />
+                <Area type="monotone" dataKey="estimated_soil_moisture" name="Độ ẩm đất ước lượng" stroke="#22c55e" strokeWidth={3} fill="url(#colorSoilM)" />
+                <Area type="monotone" dataKey="humidity" name="Độ ẩm không khí" stroke="#0ea5e9" strokeWidth={2} fill="url(#colorHum)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+              <thead>
+                <tr style={{ color: "var(--text-gray)", textAlign: "left" }}>
+                  <th style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>Ngày</th>
+                  <th style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>Nhiệt độ</th>
+                  <th style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>Độ ẩm KK</th>
+                  <th style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>Mưa</th>
+                  <th style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>Độ ẩm đất</th>
+                  <th style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>Kết luận</th>
+                </tr>
+              </thead>
+              <tbody>
+                {days.map((day) => (
+                  <tr key={day.date}>
+                    <td style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>{day.date}</td>
+                    <td style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>{day.temperature.toFixed(1)}°C</td>
+                    <td style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>{day.humidity.toFixed(0)}%</td>
+                    <td style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>{day.precipitation.toFixed(1)} mm</td>
+                    <td style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)" }}>{day.estimated_soil_moisture.toFixed(0)}%</td>
+                    <td style={{ padding: "0.55rem", borderBottom: "1px solid var(--border-color)", fontWeight: 700, color: day.water_need ? "#dc2626" : "#16a34a" }}>
+                      {day.recommendation}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -402,6 +672,8 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <ForecastPanel cropType={cropType} />
 
       {liveMode ? (
         <>

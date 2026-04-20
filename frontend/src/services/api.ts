@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { SensorRecord, MetricsResult, Device, ManualPredictInput, SensorPredictions } from "@/types/sensor";
+import type { SensorRecord, MetricsResult, Device, ManualPredictInput, SensorPredictions, SevenDayForecast, GeocodeResult } from "@/types/sensor";
 
 const api = axios.create({ baseURL: "/api" });
 
@@ -14,6 +14,12 @@ export const getDevices = () =>
 
 export const predictManual = (data: ManualPredictInput & { crop_type?: string }) =>
   api.post<SensorPredictions & { crop_advisory?: unknown }>("/sensor/predict", data);
+
+export const fetchSevenDayForecast = (params: { lat: number; lon: number; crop_type: string }) =>
+  api.get<SevenDayForecast>("/sensor/forecast/7-days", { params });
+
+export const searchAddress = (q: string) =>
+  api.get<GeocodeResult[]>("/geocode/search", { params: { q } });
 
 export const getModelMetrics = () =>
   api.get<MetricsResult>("/models/metrics");

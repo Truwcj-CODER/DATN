@@ -199,6 +199,8 @@ DATN/
 | `GET` | `/api/sensor/history` | Lịch sử đo (có phân trang) |
 | `GET` | `/api/sensor/devices` | Trạng thái thiết bị online/offline |
 | `POST` | `/api/sensor/predict` | Dự đoán nhu cầu tưới nước |
+| `GET` | `/api/sensor/forecast/7-days` | Dự báo nhu cầu tưới 7 ngày theo tọa độ |
+| `GET` | `/api/geocode/search` | Tìm tọa độ từ địa chỉ |
 | `GET` | `/api/models/metrics` | Chỉ số độ chính xác các mô hình |
 | `POST` | `/api/models/retrain` | Huấn luyện lại mô hình |
 

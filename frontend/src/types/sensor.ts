@@ -4,6 +4,35 @@ export interface SensorPredictions {
   xgboost?: number;
 }
 
+export interface ForecastDay {
+  date: string;
+  temperature: number;
+  humidity: number;
+  precipitation: number;
+  estimated_soil_temp: number;
+  estimated_soil_moisture: number;
+  dew_point: number;
+  predictions: SensorPredictions;
+  model_score: number;
+  water_need: boolean;
+  recommendation: string;
+}
+
+export interface SevenDayForecast {
+  source: string;
+  latitude: number;
+  longitude: number;
+  crop_type: string;
+  baseline: SensorRecord;
+  days: ForecastDay[];
+}
+
+export interface GeocodeResult {
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
 export interface SensorRecord {
   humidity: number;
   atmospheric_Temp: number;
